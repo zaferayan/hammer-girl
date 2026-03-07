@@ -61,9 +61,15 @@
     // Throw animation config
     const THROW_FRAME_DURATION = 8;  // game frames per throw pose
     const HAMMER_SPEED = 8;          // pixels per frame for thrown hammer
-    const HAMMER_SIZE = 60;          // render size of the thrown hammer
+    const HAMMER_SIZE = 200;          // render size of the thrown hammer
     // Rotation angles for the hammer spin cycle (in degrees)
     const HAMMER_ROTATIONS = [300, 0, 45, 90];
+
+    // Jump config
+    const JUMP_VELOCITY = -18;     // initial upward velocity
+    const GRAVITY = 0.6;           // gravity pull per frame
+    const JUMP_CROUCH_FRAMES = 6;  // frames to show crouch before takeoff
+    const JUMP_LAND_FRAMES = 8;    // frames to show landing pose
 
     // ========== CANVAS SETUP ==========
 
@@ -124,6 +130,21 @@
     const hammerImg = new Image();
     hammerImg.src = 'img/items/hammer-upward.png';
 
+    // Jump frames (in animation order)
+    const jumpFrames = [];
+    const jumpSources = [
+      'img/jump/crouch-pose-preparing-to-jump.png',
+      'img/jump/takeoff-pose-leaving-the-ground.png',
+      'img/jump/mid-air-jump-pose.png',
+      'img/jump/landing-pose-touching-the-ground.png',
+    ];
+
+    jumpSources.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+      jumpFrames.push(img);
+    });
+
     // ========== KEYBOARD INPUT ==========
 
     const keys = {};
@@ -133,15 +154,24 @@
       // Prevent arrow keys and space from scrolling the page
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 
-      // Trigger attack on Space press (only if not already attacking/throwing)
-      if (e.code === 'Space' && !character.isAttacking && !character.isThrowing) {
+      // Trigger attack on E press (only if not already attacking/throwing)
+      if (e.code === 'KeyE' && !character.isAttacking && !character.isThrowing) {
         character.isAttacking = true;
         character.attackFrame = 0;
         character.attackTimer = 0;
       }
 
-      // Trigger throw on E press (only if not already attacking/throwing)
-      if (e.code === 'KeyE' && !character.isAttacking && !character.isThrowing) {
+      // Trigger jump on Space press
+      if (e.code === 'Space' && !character.isJumping && !character.isAttacking && !character.isThrowing) {
+        character.isJumping = true;
+        character.jumpPhase = 'crouch';
+        character.jumpTimer = 0;
+        character.jumpOffsetY = 0;
+        character.groundY = character.y;
+      }
+
+      // Trigger throw on Q press (only if not already attacking/throwing)
+      if (e.code === 'KeyQ' && !character.isAttacking && !character.isThrowing && !character.isJumping) {
         character.isThrowing = true;
         character.throwFrame = 0;
         character.throwTimer = 0;
@@ -168,6 +198,12 @@
       isThrowing: false,
       throwFrame: 0,
       throwTimer: 0,
+      isJumping: false,
+      jumpPhase: '',       // 'crouch', 'air', 'land'
+      jumpTimer: 0,
+      jumpVelY: 0,         // vertical velocity during jump
+      jumpOffsetY: 0,      // visual offset from ground (negative = up)
+      groundY: 0,          // remembered ground y when jump started
     };
 
     // Active thrown hammers
@@ -208,6 +244,38 @@
       }
       if (character.y > CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20) {
         character.y = CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20;
+      }
+
+      // Jump logic
+      if (character.isJumping) {
+        character.jumpTimer++;
+
+        if (character.jumpPhase === 'crouch') {
+          // Show crouch for a few frames then launch
+          if (character.jumpTimer >= JUMP_CROUCH_FRAMES) {
+            character.jumpPhase = 'air';
+            character.jumpVelY = JUMP_VELOCITY;
+            character.jumpTimer = 0;
+          }
+        } else if (character.jumpPhase === 'air') {
+          // Apply gravity
+          character.jumpOffsetY += character.jumpVelY;
+          character.jumpVelY += GRAVITY;
+
+          // Landed when offset returns to 0 or above
+          if (character.jumpOffsetY >= 0) {
+            character.jumpOffsetY = 0;
+            character.jumpPhase = 'land';
+            character.jumpTimer = 0;
+          }
+        } else if (character.jumpPhase === 'land') {
+          // Show landing pose for a few frames
+          if (character.jumpTimer >= JUMP_LAND_FRAMES) {
+            character.isJumping = false;
+            character.jumpPhase = '';
+            character.jumpOffsetY = 0;
+          }
+        }
       }
 
       // Throw animation takes priority over attack
@@ -265,11 +333,11 @@
         const p = projectiles[i];
         p.x += HAMMER_SPEED * p.dir;
 
-        // Cycle through rotation angles
+        // Step through rotation angles once, then stay on last
         p.rotTimer++;
-        if (p.rotTimer >= 4) {
+        if (p.rotTimer >= 4 && p.rotIndex < HAMMER_ROTATIONS.length - 1) {
           p.rotTimer = 0;
-          p.rotIndex = (p.rotIndex + 1) % HAMMER_ROTATIONS.length;
+          p.rotIndex++;
         }
 
         // Remove if off screen
@@ -313,11 +381,16 @@
       const drawH = Math.round(CHAR_RENDER_HEIGHT * scale * breathScale);
       // Keep feet anchored: adjust y so bottom edge stays consistent
       const drawX = Math.round(character.x + (CHAR_RENDER_WIDTH - drawW) / 2);
-      const drawY = Math.round(character.y + (CHAR_RENDER_HEIGHT - drawH));
+      const drawY = Math.round(character.y + (CHAR_RENDER_HEIGHT - drawH) + character.jumpOffsetY);
 
-      // Pick the right frame: throw > attack > walk > idle
+      // Pick the right frame: jump > throw > attack > walk > idle
       let frame;
-      if (character.isThrowing) {
+      if (character.isJumping) {
+        if (character.jumpPhase === 'crouch') frame = jumpFrames[0];
+        else if (character.jumpPhase === 'air' && character.jumpVelY < 0) frame = jumpFrames[1]; // going up: takeoff
+        else if (character.jumpPhase === 'air') frame = jumpFrames[2]; // coming down: mid-air
+        else frame = jumpFrames[3]; // landing
+      } else if (character.isThrowing) {
         frame = throwFrames[character.throwFrame];
       } else if (character.isAttacking) {
         frame = attackFrames[character.attackFrame];
