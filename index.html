@@ -22,8 +22,8 @@
 
       canvas {
         display: block;
-        max-width: 100vw;
-        max-height: 100vh;
+        width: 100vw;
+        height: 100vh;
         image-rendering: -webkit-optimize-contrast;
         image-rendering: crisp-edges;
       }
@@ -64,6 +64,17 @@
       const HAMMER_SIZE = 200; // render size of the thrown hammer
       // Rotation angles for the hammer spin cycle (in degrees)
       const HAMMER_ROTATIONS = [300, 0, 45, 90];
+
+      // HP config
+      const PLAYER_MAX_HP = 5;
+      const SLIME_MAX_HP = 5;
+      const HEALTHBAR_WIDTH = 300;
+      const HEALTHBAR_HEIGHT = 95;
+      const HEALTHBAR_MARGIN = 15;
+
+      // Invincibility after taking damage (3 seconds at ~60fps)
+      const INVINCIBLE_DURATION = 180;
+      const BLINK_SPEED = 8; // blink every N frames
 
       // Slime enemy config
       const SLIME_WIDTH = 120;
@@ -170,6 +181,13 @@
         slimeImgs[key] = img;
       }
 
+      // Healthbar images
+      const playerHealthbarImg = new Image();
+      playerHealthbarImg.src = "img/ui/player-healthbar.png";
+
+      const enemyHealthbarImg = new Image();
+      enemyHealthbarImg.src = "img/ui/enemy-healthbar.png";
+
       // ========== KEYBOARD INPUT ==========
 
       const keys = {};
@@ -243,6 +261,9 @@
         jumpVelY: 0, // vertical velocity during jump
         jumpOffsetY: 0, // visual offset from ground (negative = up)
         groundY: 0, // remembered ground y when jump started
+        hp: PLAYER_MAX_HP,
+        invincible: false,
+        invincibleTimer: 0,
       };
 
       // Active thrown hammers
@@ -383,6 +404,14 @@
         // Breathing timer always ticks
         character.breathTimer += BREATH_SPEED;
 
+        // Invincibility countdown
+        if (character.invincible) {
+          character.invincibleTimer--;
+          if (character.invincibleTimer <= 0) {
+            character.invincible = false;
+          }
+        }
+
         // ===== SLIME AI =====
         if (slime.hp > 0) {
           slime.stateTimer++;
@@ -443,6 +472,19 @@
               slime.state = "attack";
               slime.stateTimer = 0;
             }
+          }
+
+          // Slime damages player on attack (once per attack at frame 10)
+          if (
+            slime.state === "attack" &&
+            slime.stateTimer === 10 &&
+            dist < SLIME_ATTACK_RANGE + 30 &&
+            !character.invincible
+          ) {
+            character.hp--;
+            if (character.hp < 0) character.hp = 0;
+            character.invincible = true;
+            character.invincibleTimer = INVINCIBLE_DURATION;
           }
 
           // Check if player's attack hits slime
@@ -556,21 +598,28 @@
           frame = standingImg;
         }
 
-        if (frame && frame.complete && frame.naturalWidth > 0) {
-          ctx.save();
+        // Skip drawing every few frames when invincible (blinking effect)
+        const visible =
+          !character.invincible ||
+          Math.floor(character.invincibleTimer / BLINK_SPEED) % 2 === 0;
 
-          if (!character.facingRight) {
-            ctx.translate(drawX + drawW, drawY);
-            ctx.scale(-1, 1);
-            ctx.drawImage(frame, 0, 0, drawW, drawH);
+        if (visible) {
+          if (frame && frame.complete && frame.naturalWidth > 0) {
+            ctx.save();
+
+            if (!character.facingRight) {
+              ctx.translate(drawX + drawW, drawY);
+              ctx.scale(-1, 1);
+              ctx.drawImage(frame, 0, 0, drawW, drawH);
+            } else {
+              ctx.drawImage(frame, drawX, drawY, drawW, drawH);
+            }
+
+            ctx.restore();
           } else {
-            ctx.drawImage(frame, drawX, drawY, drawW, drawH);
+            ctx.fillStyle = "#ff69b4";
+            ctx.fillRect(drawX, drawY, drawW, drawH);
           }
-
-          ctx.restore();
-        } else {
-          ctx.fillStyle = "#ff69b4";
-          ctx.fillRect(drawX, drawY, drawW, drawH);
         }
 
         // Draw slime enemy
@@ -612,6 +661,59 @@
               ctx.drawImage(slimeFrame, sX, sY, sW, sH);
             }
             ctx.restore();
+          }
+        }
+
+        // Draw healthbars (UI layer)
+        // Player healthbar - top left
+        if (playerHealthbarImg.complete && playerHealthbarImg.naturalWidth > 0) {
+          // Draw the healthbar background image
+          ctx.drawImage(
+            playerHealthbarImg,
+            HEALTHBAR_MARGIN,
+            HEALTHBAR_MARGIN,
+            HEALTHBAR_WIDTH,
+            HEALTHBAR_HEIGHT,
+          );
+
+          // Draw dark overlay to represent lost HP (clip from right)
+          const playerHpRatio = character.hp / PLAYER_MAX_HP;
+          if (playerHpRatio < 1) {
+            // The bar area starts ~28% from left (after the heart icon) and ends ~95% width
+            const barLeft = HEALTHBAR_MARGIN + HEALTHBAR_WIDTH * 0.28;
+            const barRight = HEALTHBAR_MARGIN + HEALTHBAR_WIDTH * 0.95;
+            const barTop = HEALTHBAR_MARGIN + HEALTHBAR_HEIGHT * 0.2;
+            const barBottom = HEALTHBAR_MARGIN + HEALTHBAR_HEIGHT * 0.7;
+            const barW = barRight - barLeft;
+            const lostW = barW * (1 - playerHpRatio);
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(barRight - lostW, barTop, lostW, barBottom - barTop);
+          }
+        }
+
+        // Enemy healthbar - top right (flipped)
+        if (enemyHealthbarImg.complete && enemyHealthbarImg.naturalWidth > 0) {
+          ctx.save();
+          // Flip horizontally and position at top right
+          const ebX = CANVAS_WIDTH - HEALTHBAR_MARGIN;
+          const enemyBarTop = HEALTHBAR_MARGIN - 20;
+          ctx.translate(ebX, enemyBarTop);
+          ctx.scale(-1, 1);
+          ctx.drawImage(enemyHealthbarImg, 0, 0, HEALTHBAR_WIDTH, HEALTHBAR_HEIGHT);
+          ctx.restore();
+
+          // Draw dark overlay for lost enemy HP
+          const slimeHpRatio = slime.hp / SLIME_MAX_HP;
+          if (slimeHpRatio < 1) {
+            const ebRight = CANVAS_WIDTH - HEALTHBAR_MARGIN;
+            const barLeft = ebRight - HEALTHBAR_WIDTH * 0.95;
+            const barRight = ebRight - HEALTHBAR_WIDTH * 0.28;
+            const barTop = enemyBarTop + HEALTHBAR_HEIGHT * 0.25;
+            const barBottom = enemyBarTop + HEALTHBAR_HEIGHT * 0.75;
+            const barW = barRight - barLeft;
+            const lostW = barW * (1 - slimeHpRatio);
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(barLeft, barTop, lostW, barBottom - barTop);
           }
         }
 
