@@ -239,6 +239,130 @@
         keys[e.code] = false;
       });
 
+      // ========== TOUCH CONTROLS ==========
+
+      const touch = {
+        joystickId: null,  // track which touch is the joystick
+        joyStartX: 0,
+        joyStartY: 0,
+        joyDX: 0,
+        joyDY: 0,
+        active: false,
+      };
+
+      const JOYSTICK_DEAD_ZONE = 15;
+      const JOYSTICK_RADIUS = 60;
+      const BTN_SIZE = 70;
+      const BTN_MARGIN = 20;
+
+      // Action button positions (bottom-right corner, in canvas coordinates)
+      const actionBtns = {
+        attack: { label: "E", cx: CANVAS_WIDTH - BTN_MARGIN - BTN_SIZE, cy: CANVAS_HEIGHT - BTN_MARGIN - BTN_SIZE },
+        throw:  { label: "Q", cx: CANVAS_WIDTH - BTN_MARGIN - BTN_SIZE * 2.5, cy: CANVAS_HEIGHT - BTN_MARGIN - BTN_SIZE },
+        jump:   { label: "⬆", cx: CANVAS_WIDTH - BTN_MARGIN - BTN_SIZE * 1.75, cy: CANVAS_HEIGHT - BTN_MARGIN - BTN_SIZE * 2.5 },
+      };
+
+      // Convert screen touch coords to canvas coords
+      function touchToCanvas(touchX, touchY) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: (touchX - rect.left) * (CANVAS_WIDTH / rect.width),
+          y: (touchY - rect.top) * (CANVAS_HEIGHT / rect.height),
+        };
+      }
+
+      // Check if a point hits a button
+      function hitButton(cx, cy, px, py) {
+        const dx = px - cx;
+        const dy = py - cy;
+        return Math.sqrt(dx * dx + dy * dy) < BTN_SIZE;
+      }
+
+      canvas.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          const p = touchToCanvas(t.clientX, t.clientY);
+
+          // Check action buttons first
+          if (hitButton(actionBtns.attack.cx, actionBtns.attack.cy, p.x, p.y)) {
+            if (!character.isAttacking && !character.isThrowing) {
+              character.isAttacking = true;
+              character.attackFrame = 0;
+              character.attackTimer = 0;
+            }
+            continue;
+          }
+          if (hitButton(actionBtns.throw.cx, actionBtns.throw.cy, p.x, p.y)) {
+            if (!character.isAttacking && !character.isThrowing) {
+              character.isThrowing = true;
+              character.throwFrame = 0;
+              character.throwTimer = 0;
+            }
+            continue;
+          }
+          if (hitButton(actionBtns.jump.cx, actionBtns.jump.cy, p.x, p.y)) {
+            if (!character.isJumping && !character.isAttacking && !character.isThrowing) {
+              character.isJumping = true;
+              character.jumpPhase = "crouch";
+              character.jumpTimer = 0;
+              character.jumpOffsetY = 0;
+              character.groundY = character.y;
+            }
+            continue;
+          }
+
+          // Left half of screen = joystick
+          if (p.x < CANVAS_WIDTH / 2 && touch.joystickId === null) {
+            touch.joystickId = t.identifier;
+            touch.joyStartX = p.x;
+            touch.joyStartY = p.y;
+            touch.joyDX = 0;
+            touch.joyDY = 0;
+            touch.active = true;
+          }
+        }
+      }, { passive: false });
+
+      canvas.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          if (t.identifier === touch.joystickId) {
+            const p = touchToCanvas(t.clientX, t.clientY);
+            touch.joyDX = p.x - touch.joyStartX;
+            touch.joyDY = p.y - touch.joyStartY;
+            // Clamp to radius
+            const dist = Math.sqrt(touch.joyDX * touch.joyDX + touch.joyDY * touch.joyDY);
+            if (dist > JOYSTICK_RADIUS) {
+              touch.joyDX = (touch.joyDX / dist) * JOYSTICK_RADIUS;
+              touch.joyDY = (touch.joyDY / dist) * JOYSTICK_RADIUS;
+            }
+          }
+        }
+      }, { passive: false });
+
+      canvas.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          if (t.identifier === touch.joystickId) {
+            touch.joystickId = null;
+            touch.joyDX = 0;
+            touch.joyDY = 0;
+            touch.active = false;
+          }
+        }
+      }, { passive: false });
+
+      canvas.addEventListener("touchcancel", (e) => {
+        for (const t of e.changedTouches) {
+          if (t.identifier === touch.joystickId) {
+            touch.joystickId = null;
+            touch.joyDX = 0;
+            touch.joyDY = 0;
+            touch.active = false;
+          }
+        }
+      });
+
       // ========== CHARACTER STATE ==========
 
       const character = {
@@ -285,7 +409,7 @@
       function update() {
         character.isMoving = false;
 
-        // Handle movement in all directions
+        // Handle movement in all directions (keyboard)
         if (keys["ArrowRight"] || keys["KeyD"]) {
           character.x += MOVE_SPEED;
           character.isMoving = true;
@@ -303,6 +427,19 @@
         if (keys["ArrowDown"] || keys["KeyS"]) {
           character.y += MOVE_SPEED;
           character.isMoving = true;
+        }
+
+        // Handle movement from touch joystick
+        if (touch.active) {
+          if (Math.abs(touch.joyDX) > JOYSTICK_DEAD_ZONE) {
+            character.x += (touch.joyDX / JOYSTICK_RADIUS) * MOVE_SPEED;
+            character.isMoving = true;
+            character.facingRight = touch.joyDX > 0;
+          }
+          if (Math.abs(touch.joyDY) > JOYSTICK_DEAD_ZONE) {
+            character.y += (touch.joyDY / JOYSTICK_RADIUS) * MOVE_SPEED;
+            character.isMoving = true;
+          }
         }
 
         // Clamp character within canvas bounds
@@ -722,9 +859,8 @@
           for (const p of projectiles) {
             ctx.save();
             const angle = (HAMMER_ROTATIONS[p.rotIndex] * Math.PI) / 180;
-            // Translate to hammer center, rotate, then draw centered
             ctx.translate(p.x, p.y);
-            if (p.dir < 0) ctx.scale(-1, 1); // flip for left-facing throws
+            if (p.dir < 0) ctx.scale(-1, 1);
             ctx.rotate(angle);
             ctx.drawImage(
               hammerImg,
@@ -735,6 +871,44 @@
             );
             ctx.restore();
           }
+        }
+
+        // Draw touch controls (only if touch device)
+        if ("ontouchstart" in window) {
+          ctx.globalAlpha = 0.35;
+
+          // Joystick base
+          if (touch.active) {
+            // Base circle
+            ctx.beginPath();
+            ctx.arc(touch.joyStartX, touch.joyStartY, JOYSTICK_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+
+            // Thumb circle
+            ctx.beginPath();
+            ctx.arc(touch.joyStartX + touch.joyDX, touch.joyStartY + touch.joyDY, 25, 0, Math.PI * 2);
+            ctx.fillStyle = "#ccc";
+            ctx.fill();
+          }
+
+          // Action buttons
+          ctx.font = "bold 24px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          for (const [, btn] of Object.entries(actionBtns)) {
+            ctx.beginPath();
+            ctx.arc(btn.cx, btn.cy, BTN_SIZE * 0.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.fillStyle = "#000";
+            ctx.globalAlpha = 0.6;
+            ctx.fillText(btn.label, btn.cx, btn.cy);
+            ctx.globalAlpha = 0.35;
+          }
+
+          ctx.globalAlpha = 1;
         }
       }
 
