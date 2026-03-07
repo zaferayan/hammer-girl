@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hammer Girl - 2D Fighter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      max-width: 100vw;
+      max-height: 100vh;
+      image-rendering: pixelated;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    // ========== CONFIGURATION ==========
+
+    const CANVAS_WIDTH = 960;
+    const CANVAS_HEIGHT = 540;
+
+    // Sprite sheet config
+    // Assumes a horizontal strip: [frame0][frame1]
+    // Adjust FRAME_WIDTH and FRAME_HEIGHT to match your sprite sheet
+    const FRAME_WIDTH = 500;   // width of one frame in the sprite sheet (px)
+    const FRAME_HEIGHT = 500;  // height of one frame in the sprite sheet (px)
+    const TOTAL_FRAMES = 2;    // number of walk frames in the sprite sheet
+
+    // Character rendering size on canvas
+    const CHAR_RENDER_WIDTH = 200;
+    const CHAR_RENDER_HEIGHT = 200;
+
+    // Movement
+    const MOVE_SPEED = 4;
+
+    // Animation speed: lower = faster animation
+    const ANIM_FRAME_DURATION = 8; // game frames per sprite frame
+
+    // ========== CANVAS SETUP ==========
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+
+    // ========== LOAD ASSETS ==========
+
+    const bgImage = new Image();
+    bgImage.src = 'background.png'; // <-- place your background image here
+
+    const spriteSheet = new Image();
+    spriteSheet.src = 'spritesheet.png'; // <-- place your sprite sheet here
+
+    // Track loading
+    let assetsLoaded = 0;
+    const TOTAL_ASSETS = 2;
+
+    bgImage.onload = () => { assetsLoaded++; };
+    spriteSheet.onload = () => { assetsLoaded++; };
+
+    bgImage.onerror = () => console.warn('Could not load background.png');
+    spriteSheet.onerror = () => console.warn('Could not load spritesheet.png');
+
+    // ========== KEYBOARD INPUT ==========
+
+    const keys = {};
+
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      // Prevent arrow keys from scrolling the page
+      if (e.code.startsWith('Arrow')) e.preventDefault();
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    // ========== CHARACTER STATE ==========
+
+    const character = {
+      x: CANVAS_WIDTH / 2 - CHAR_RENDER_WIDTH / 2, // start centered
+      y: CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20,   // ground level
+      currentFrame: 0,  // current sprite frame index
+      animTimer: 0,     // counts game frames for animation timing
+      isMoving: false,
+    };
+
+    // ========== UPDATE ==========
+
+    function update() {
+      character.isMoving = false;
+
+      // Handle horizontal movement
+      if (keys['ArrowRight']) {
+        character.x += MOVE_SPEED;
+        character.isMoving = true;
+      }
+      if (keys['ArrowLeft']) {
+        character.x -= MOVE_SPEED;
+        character.isMoving = true;
+      }
+
+      // Clamp character within canvas bounds
+      if (character.x < 0) character.x = 0;
+      if (character.x > CANVAS_WIDTH - CHAR_RENDER_WIDTH) {
+        character.x = CANVAS_WIDTH - CHAR_RENDER_WIDTH;
+      }
+
+      // Animate walk cycle when moving, reset to idle frame when stopped
+      if (character.isMoving) {
+        character.animTimer++;
+        if (character.animTimer >= ANIM_FRAME_DURATION) {
+          character.animTimer = 0;
+          character.currentFrame = (character.currentFrame + 1) % TOTAL_FRAMES;
+        }
+      } else {
+        // Idle: show first frame, reset timer
+        character.currentFrame = 0;
+        character.animTimer = 0;
+      }
+    }
+
+    // ========== RENDER ==========
+
+    function render() {
+      // Clear canvas
+      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // Draw background (stretch to fill canvas)
+      if (bgImage.complete && bgImage.naturalWidth > 0) {
+        ctx.drawImage(bgImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      } else {
+        // Fallback gradient background
+        const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+        grad.addColorStop(0, '#4a90d9');
+        grad.addColorStop(0.6, '#87CEEB');
+        grad.addColorStop(0.6, '#555');
+        grad.addColorStop(1, '#333');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      }
+
+      // Draw character
+      if (spriteSheet.complete && spriteSheet.naturalWidth > 0) {
+        // Source rectangle: pick the current frame from the horizontal strip
+        const sx = character.currentFrame * FRAME_WIDTH;
+        const sy = 0;
+
+        ctx.drawImage(
+          spriteSheet,
+          sx, sy, FRAME_WIDTH, FRAME_HEIGHT,                       // source
+          character.x, character.y, CHAR_RENDER_WIDTH, CHAR_RENDER_HEIGHT // destination
+        );
+      } else {
+        // Fallback: draw a placeholder rectangle
+        ctx.fillStyle = '#ff69b4';
+        ctx.fillRect(character.x, character.y, CHAR_RENDER_WIDTH, CHAR_RENDER_HEIGHT);
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('sprite', character.x + CHAR_RENDER_WIDTH / 2, character.y + CHAR_RENDER_HEIGHT / 2);
+      }
+    }
+
+    // ========== GAME LOOP ==========
+
+    function gameLoop() {
+      update();
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the loop
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
