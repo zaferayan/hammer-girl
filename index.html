@@ -24,6 +24,8 @@
       display: block;
       max-width: 100vw;
       max-height: 100vh;
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
     }
   </style>
 </head>
@@ -48,6 +50,10 @@
 
     // Animation speed: game frames per sprite frame (lower = faster)
     const ANIM_FRAME_DURATION = 10;
+
+    // Breathing animation config
+    const BREATH_SPEED = 0.03;    // how fast the breathing cycle is
+    const BREATH_AMOUNT = 0.008;  // max scale variation (0.8%)
 
     // ========== CANVAS SETUP ==========
 
@@ -100,6 +106,7 @@
       animTimer: 0,      // counts game frames for animation timing
       isMoving: false,
       facingRight: true,  // character faces right by default
+      breathTimer: 0,     // accumulates for breathing sine wave
     };
 
     // ========== UPDATE ==========
@@ -151,6 +158,9 @@
         character.currentFrame = 0;
         character.animTimer = 0;
       }
+
+      // Breathing timer always ticks
+      character.breathTimer += BREATH_SPEED;
     }
 
     // ========== RENDER ==========
@@ -180,11 +190,14 @@
       const t = (groundY - character.y) / (groundY - topY); // 0 at ground, 1 at top
       const scale = 1 - t * (1 - MIN_SCALE);
 
-      const drawW = CHAR_RENDER_WIDTH * scale;
-      const drawH = CHAR_RENDER_HEIGHT * scale;
+      // Apply breathing effect (subtle sine wave scale)
+      const breathScale = 1 + Math.sin(character.breathTimer) * BREATH_AMOUNT;
+
+      const drawW = Math.round(CHAR_RENDER_WIDTH * scale * breathScale);
+      const drawH = Math.round(CHAR_RENDER_HEIGHT * scale * breathScale);
       // Keep feet anchored: adjust y so bottom edge stays consistent
-      const drawX = character.x + (CHAR_RENDER_WIDTH - drawW) / 2;
-      const drawY = character.y + (CHAR_RENDER_HEIGHT - drawH);
+      const drawX = Math.round(character.x + (CHAR_RENDER_WIDTH - drawW) / 2);
+      const drawY = Math.round(character.y + (CHAR_RENDER_HEIGHT - drawH));
 
       // Draw character: use standing image when idle, walk frames when moving
       const frame = character.isMoving ? walkFrames[character.currentFrame] : standingImg;
