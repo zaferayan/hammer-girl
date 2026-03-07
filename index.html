@@ -154,7 +154,7 @@
       // Prevent arrow keys and space from scrolling the page
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 
-      // Trigger attack on E press (only if not already attacking/throwing)
+      // Trigger attack on E press (works in air too)
       if (e.code === 'KeyE' && !character.isAttacking && !character.isThrowing) {
         character.isAttacking = true;
         character.attackFrame = 0;
@@ -170,8 +170,8 @@
         character.groundY = character.y;
       }
 
-      // Trigger throw on Q press (only if not already attacking/throwing)
-      if (e.code === 'KeyQ' && !character.isAttacking && !character.isThrowing && !character.isJumping) {
+      // Trigger throw on Q press (works in air too)
+      if (e.code === 'KeyQ' && !character.isAttacking && !character.isThrowing) {
         character.isThrowing = true;
         character.throwFrame = 0;
         character.throwTimer = 0;
@@ -289,7 +289,7 @@
             const dir = character.facingRight ? 1 : -1;
             projectiles.push({
               x: character.x + (character.facingRight ? CHAR_RENDER_WIDTH : 0),
-              y: character.y + CHAR_RENDER_HEIGHT * 0.3,
+              y: character.y + character.jumpOffsetY + CHAR_RENDER_HEIGHT * 0.3,
               dir: dir,
               rotIndex: 0,
               rotTimer: 0,
@@ -383,17 +383,18 @@
       const drawX = Math.round(character.x + (CHAR_RENDER_WIDTH - drawW) / 2);
       const drawY = Math.round(character.y + (CHAR_RENDER_HEIGHT - drawH) + character.jumpOffsetY);
 
-      // Pick the right frame: jump > throw > attack > walk > idle
+      // Pick the right frame: attack > throw > jump > walk > idle
+      // Attack works even while jumping
       let frame;
-      if (character.isJumping) {
-        if (character.jumpPhase === 'crouch') frame = jumpFrames[0];
-        else if (character.jumpPhase === 'air' && character.jumpVelY < 0) frame = jumpFrames[1]; // going up: takeoff
-        else if (character.jumpPhase === 'air') frame = jumpFrames[2]; // coming down: mid-air
-        else frame = jumpFrames[3]; // landing
+      if (character.isAttacking) {
+        frame = attackFrames[character.attackFrame];
       } else if (character.isThrowing) {
         frame = throwFrames[character.throwFrame];
-      } else if (character.isAttacking) {
-        frame = attackFrames[character.attackFrame];
+      } else if (character.isJumping) {
+        if (character.jumpPhase === 'crouch') frame = jumpFrames[0];
+        else if (character.jumpPhase === 'air' && character.jumpVelY < 0) frame = jumpFrames[1];
+        else if (character.jumpPhase === 'air') frame = jumpFrames[2];
+        else frame = jumpFrames[3];
       } else if (character.isMoving) {
         frame = walkFrames[character.currentFrame];
       } else {
