@@ -100,93 +100,85 @@
       canvas.width = CANVAS_WIDTH;
       canvas.height = CANVAS_HEIGHT;
 
-      // ========== LOAD ASSETS ==========
+      // ========== ASSET LOADER ==========
+
+      const allImages = [];
+      let assetsLoaded = 0;
+      let assetsTotal = 0;
+      let assetsReady = false;
+
+      function loadImage(src) {
+        const img = new Image();
+        assetsTotal++;
+        img.onload = () => {
+          assetsLoaded++;
+          if (assetsLoaded >= assetsTotal) assetsReady = true;
+        };
+        img.onerror = () => {
+          assetsLoaded++;
+          if (assetsLoaded >= assetsTotal) assetsReady = true;
+        };
+        img.src = src;
+        allImages.push(img);
+        return img;
+      }
 
       // Background image
-      const bgImage = new Image();
-      bgImage.src = "img/bg.png";
+      const bgImage = loadImage("img/bg.png");
 
       // Idle (standing) frame
-      const standingImg = new Image();
-      standingImg.src = "img/standing.png";
+      const standingImg = loadImage("img/standing.png");
 
-      // Walk frames as separate images
+      // Walk frames
       const walkFrames = [];
-      const walkSources = ["img/walk1.png", "img/walk2.png"];
-
-      walkSources.forEach((src) => {
-        const img = new Image();
-        img.src = src;
-        walkFrames.push(img);
+      ["img/walk1.png", "img/walk2.png"].forEach((src) => {
+        walkFrames.push(loadImage(src));
       });
 
-      // Attack frames (in animation order)
+      // Attack frames
       const attackFrames = [];
-      const attackSources = [
+      [
         "img/attack/lifting-hammer.png",
         "img/attack/strong-downward-hammer-smash.png",
         "img/attack/follow-through-pose-after-the-strike.png",
-      ];
-
-      attackSources.forEach((src) => {
-        const img = new Image();
-        img.src = src;
-        attackFrames.push(img);
+      ].forEach((src) => {
+        attackFrames.push(loadImage(src));
       });
 
-      // Throw frames (in animation order: lift then throw)
+      // Throw frames
       const throwFrames = [];
-      const throwSources = [
+      [
         "img/throw/lifting-hammer.png",
         "img/throw/throw.png",
-      ];
-
-      throwSources.forEach((src) => {
-        const img = new Image();
-        img.src = src;
-        throwFrames.push(img);
+      ].forEach((src) => {
+        throwFrames.push(loadImage(src));
       });
 
       // Hammer projectile image
-      const hammerImg = new Image();
-      hammerImg.src = "img/items/hammer-upward.png";
+      const hammerImg = loadImage("img/items/hammer-upward.png");
 
-      // Jump frames (in animation order)
+      // Jump frames
       const jumpFrames = [];
-      const jumpSources = [
+      [
         "img/jump/crouch-pose-preparing-to-jump.png",
         "img/jump/takeoff-pose-leaving-the-ground.png",
         "img/jump/mid-air-jump-pose.png",
         "img/jump/landing-pose-touching-the-ground.png",
-      ];
-
-      jumpSources.forEach((src) => {
-        const img = new Image();
-        img.src = src;
-        jumpFrames.push(img);
+      ].forEach((src) => {
+        jumpFrames.push(loadImage(src));
       });
 
       // Slime enemy images
-      const slimeImgs = {};
-      const slimeSources = {
-        idle: "img/slime/idle blob pose.png",
-        move: "img/slime/stretching forward movement.png",
-        attack: "img/slime/attack pose lunging forward.png",
-        hurt: "img/slime/squished hurt pose.png",
+      const slimeImgs = {
+        idle: loadImage("img/slime/idle blob pose.png"),
+        move: loadImage("img/slime/stretching forward movement.png"),
+        attack: loadImage("img/slime/attack pose lunging forward.png"),
+        hurt: loadImage("img/slime/squished hurt pose.png"),
       };
 
-      for (const [key, src] of Object.entries(slimeSources)) {
-        const img = new Image();
-        img.src = src;
-        slimeImgs[key] = img;
-      }
-
       // Healthbar images
-      const playerHealthbarImg = new Image();
-      playerHealthbarImg.src = "img/ui/player-healthbar.png";
-
-      const enemyHealthbarImg = new Image();
-      enemyHealthbarImg.src = "img/ui/enemy-healthbar.png";
+      const playerHealthbarImg = loadImage("img/ui/player-healthbar.png");
+      const enemyHealthbarImg = loadImage("img/ui/enemy-healthbar.png");
 
       // ========== KEYBOARD INPUT ==========
 
@@ -912,15 +904,68 @@
         }
       }
 
+      // ========== LOADING SCREEN ==========
+
+      let loadingDots = 0;
+      let loadingTimer = 0;
+
+      function renderLoading() {
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Dark background
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Title
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 36px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("HAMMER GIRL", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
+
+        // Progress bar background
+        const barW = 300;
+        const barH = 20;
+        const barX = (CANVAS_WIDTH - barW) / 2;
+        const barY = CANVAS_HEIGHT / 2;
+        ctx.fillStyle = "#333";
+        ctx.fillRect(barX, barY, barW, barH);
+
+        // Progress bar fill
+        const progress = assetsTotal > 0 ? assetsLoaded / assetsTotal : 0;
+        ctx.fillStyle = "#e74c6f";
+        ctx.fillRect(barX, barY, barW * progress, barH);
+
+        // Progress bar border
+        ctx.strokeStyle = "#555";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barW, barH);
+
+        // Loading text with animated dots
+        loadingTimer++;
+        if (loadingTimer % 20 === 0) loadingDots = (loadingDots + 1) % 4;
+        ctx.fillStyle = "#aaa";
+        ctx.font = "18px sans-serif";
+        ctx.fillText(
+          "Loading" + ".".repeat(loadingDots) + " " + Math.round(progress * 100) + "%",
+          CANVAS_WIDTH / 2,
+          CANVAS_HEIGHT / 2 + 50,
+        );
+      }
+
       // ========== GAME LOOP ==========
 
       function gameLoop() {
-        update();
-        render();
+        if (!assetsReady) {
+          renderLoading();
+        } else {
+          update();
+          render();
+        }
         requestAnimationFrame(gameLoop);
       }
 
-      // Start the game loop
+      // Start the loop
       requestAnimationFrame(gameLoop);
     </script>
   </body>
