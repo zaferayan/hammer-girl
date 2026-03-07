@@ -36,9 +36,12 @@
     const CANVAS_WIDTH = 960;
     const CANVAS_HEIGHT = 540;
 
-    // Character rendering size on canvas
+    // Character rendering size on canvas (at ground level)
     const CHAR_RENDER_WIDTH = 180;
     const CHAR_RENDER_HEIGHT = 180;
+
+    // Perspective: minimum scale when at the top of movement range
+    const MIN_SCALE = 0.8;
 
     // Movement speed (pixels per frame)
     const MOVE_SPEED = 4;
@@ -59,6 +62,10 @@
     // Background image
     const bgImage = new Image();
     bgImage.src = 'img/bg.png';
+
+    // Idle (standing) frame
+    const standingImg = new Image();
+    standingImg.src = 'img/standing.png';
 
     // Walk frames as separate images
     const walkFrames = [];
@@ -100,7 +107,7 @@
     function update() {
       character.isMoving = false;
 
-      // Handle horizontal movement
+      // Handle movement in all directions
       if (keys['ArrowRight']) {
         character.x += MOVE_SPEED;
         character.isMoving = true;
@@ -111,11 +118,25 @@
         character.isMoving = true;
         character.facingRight = false;
       }
+      if (keys['ArrowUp']) {
+        character.y -= MOVE_SPEED;
+        character.isMoving = true;
+      }
+      if (keys['ArrowDown']) {
+        character.y += MOVE_SPEED;
+        character.isMoving = true;
+      }
 
       // Clamp character within canvas bounds
       if (character.x < 0) character.x = 0;
       if (character.x > CANVAS_WIDTH - CHAR_RENDER_WIDTH) {
         character.x = CANVAS_WIDTH - CHAR_RENDER_WIDTH;
+      }
+      if (character.y < CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20 - 100) {
+        character.y = CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20 - 100;
+      }
+      if (character.y > CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20) {
+        character.y = CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20;
       }
 
       // Animate walk cycle when moving, reset to idle when stopped
@@ -152,26 +173,37 @@
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
 
-      // Draw character
-      const frame = walkFrames[character.currentFrame];
+      // Calculate perspective scale based on y position
+      const groundY = CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20;
+      const topY = groundY - 100;
+      // scale goes from 1.0 (at ground) to MIN_SCALE (at top)
+      const t = (groundY - character.y) / (groundY - topY); // 0 at ground, 1 at top
+      const scale = 1 - t * (1 - MIN_SCALE);
+
+      const drawW = CHAR_RENDER_WIDTH * scale;
+      const drawH = CHAR_RENDER_HEIGHT * scale;
+      // Keep feet anchored: adjust y so bottom edge stays consistent
+      const drawX = character.x + (CHAR_RENDER_WIDTH - drawW) / 2;
+      const drawY = character.y + (CHAR_RENDER_HEIGHT - drawH);
+
+      // Draw character: use standing image when idle, walk frames when moving
+      const frame = character.isMoving ? walkFrames[character.currentFrame] : standingImg;
 
       if (frame && frame.complete && frame.naturalWidth > 0) {
         ctx.save();
 
         if (!character.facingRight) {
-          // Flip horizontally: translate to character center, scale -1 on x
-          ctx.translate(character.x + CHAR_RENDER_WIDTH, character.y);
+          ctx.translate(drawX + drawW, drawY);
           ctx.scale(-1, 1);
-          ctx.drawImage(frame, 0, 0, CHAR_RENDER_WIDTH, CHAR_RENDER_HEIGHT);
+          ctx.drawImage(frame, 0, 0, drawW, drawH);
         } else {
-          ctx.drawImage(frame, character.x, character.y, CHAR_RENDER_WIDTH, CHAR_RENDER_HEIGHT);
+          ctx.drawImage(frame, drawX, drawY, drawW, drawH);
         }
 
         ctx.restore();
       } else {
-        // Fallback placeholder
         ctx.fillStyle = '#ff69b4';
-        ctx.fillRect(character.x, character.y, CHAR_RENDER_WIDTH, CHAR_RENDER_HEIGHT);
+        ctx.fillRect(drawX, drawY, drawW, drawH);
       }
     }
 
