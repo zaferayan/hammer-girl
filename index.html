@@ -55,6 +55,9 @@
     const BREATH_SPEED = 0.03;    // how fast the breathing cycle is
     const BREATH_AMOUNT = 0.008;  // max scale variation (0.8%)
 
+    // Attack animation config
+    const ATTACK_FRAME_DURATION = 8; // game frames per attack frame
+
     // ========== CANVAS SETUP ==========
 
     const canvas = document.getElementById('gameCanvas');
@@ -83,14 +86,35 @@
       walkFrames.push(img);
     });
 
+    // Attack frames (in animation order)
+    const attackFrames = [];
+    const attackSources = [
+      'img/attack/lifting-hammer.png',
+      'img/attack/strong-downward-hammer-smash.png',
+      'img/attack/follow-through-pose-after-the-strike.png',
+    ];
+
+    attackSources.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+      attackFrames.push(img);
+    });
+
     // ========== KEYBOARD INPUT ==========
 
     const keys = {};
 
     window.addEventListener('keydown', (e) => {
       keys[e.code] = true;
-      // Prevent arrow keys from scrolling the page
-      if (e.code.startsWith('Arrow')) e.preventDefault();
+      // Prevent arrow keys and space from scrolling the page
+      if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+
+      // Trigger attack on Space press (only if not already attacking)
+      if (e.code === 'Space' && !character.isAttacking) {
+        character.isAttacking = true;
+        character.attackFrame = 0;
+        character.attackTimer = 0;
+      }
     });
 
     window.addEventListener('keyup', (e) => {
@@ -107,6 +131,9 @@
       isMoving: false,
       facingRight: true,  // character faces right by default
       breathTimer: 0,     // accumulates for breathing sine wave
+      isAttacking: false,
+      attackFrame: 0,     // current attack animation frame
+      attackTimer: 0,     // counts game frames for attack timing
     };
 
     // ========== UPDATE ==========
@@ -146,8 +173,20 @@
         character.y = CANVAS_HEIGHT - CHAR_RENDER_HEIGHT - 20;
       }
 
-      // Animate walk cycle when moving, reset to idle when stopped
-      if (character.isMoving) {
+      // Attack animation takes priority
+      if (character.isAttacking) {
+        character.attackTimer++;
+        if (character.attackTimer >= ATTACK_FRAME_DURATION) {
+          character.attackTimer = 0;
+          character.attackFrame++;
+          // End attack when all frames have played
+          if (character.attackFrame >= attackFrames.length) {
+            character.isAttacking = false;
+            character.attackFrame = 0;
+          }
+        }
+      } else if (character.isMoving) {
+        // Animate walk cycle when moving
         character.animTimer++;
         if (character.animTimer >= ANIM_FRAME_DURATION) {
           character.animTimer = 0;
@@ -199,8 +238,15 @@
       const drawX = Math.round(character.x + (CHAR_RENDER_WIDTH - drawW) / 2);
       const drawY = Math.round(character.y + (CHAR_RENDER_HEIGHT - drawH));
 
-      // Draw character: use standing image when idle, walk frames when moving
-      const frame = character.isMoving ? walkFrames[character.currentFrame] : standingImg;
+      // Pick the right frame: attack > walk > idle
+      let frame;
+      if (character.isAttacking) {
+        frame = attackFrames[character.attackFrame];
+      } else if (character.isMoving) {
+        frame = walkFrames[character.currentFrame];
+      } else {
+        frame = standingImg;
+      }
 
       if (frame && frame.complete && frame.naturalWidth > 0) {
         ctx.save();
