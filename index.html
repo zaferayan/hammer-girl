@@ -27,9 +27,46 @@
         image-rendering: -webkit-optimize-contrast;
         image-rendering: crisp-edges;
       }
+
+      #rotate-warning {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #111;
+        color: #fff;
+        z-index: 9999;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-family: sans-serif;
+        text-align: center;
+        gap: 20px;
+      }
+
+      #rotate-warning .icon {
+        font-size: 64px;
+      }
+
+      #rotate-warning .text {
+        font-size: 20px;
+        color: #e74c6f;
+      }
+
+      @media (orientation: portrait) and (max-width: 768px) {
+        #rotate-warning {
+          display: flex;
+        }
+        canvas {
+          display: none;
+        }
+      }
     </style>
   </head>
   <body>
+    <div id="rotate-warning">
+      <div class="icon">📱↪️</div>
+      <div class="text">Please rotate your device to landscape mode</div>
+    </div>
     <canvas id="gameCanvas"></canvas>
 
     <script>
@@ -908,6 +945,7 @@
 
       let loadingDots = 0;
       let loadingTimer = 0;
+      let gameStarted = false;
 
       function renderLoading() {
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -955,9 +993,50 @@
 
       // ========== GAME LOOP ==========
 
+      function renderStartScreen() {
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 48px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("HAMMER GIRL", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+
+        // Blinking "tap to start" text
+        if (Math.floor(Date.now() / 500) % 2 === 0) {
+          ctx.fillStyle = "#e74c6f";
+          ctx.font = "22px sans-serif";
+          ctx.fillText("Tap or Click to Start", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
+        }
+      }
+
+      function startGame() {
+        if (!assetsReady || gameStarted) return;
+        gameStarted = true;
+
+        // Try to go fullscreen
+        const el = document.documentElement;
+        const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+        if (rfs) {
+          rfs.call(el).catch(() => {});
+        }
+      }
+
+      canvas.addEventListener("click", startGame);
+      canvas.addEventListener("touchend", (e) => {
+        if (!gameStarted && assetsReady) {
+          e.preventDefault();
+          startGame();
+        }
+      }, { passive: false });
+
       function gameLoop() {
         if (!assetsReady) {
           renderLoading();
+        } else if (!gameStarted) {
+          renderStartScreen();
         } else {
           update();
           render();
