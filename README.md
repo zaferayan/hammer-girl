@@ -4,7 +4,9 @@ Canvas API ile yapılmış vanilla JavaScript 2D dövüş oyunu. Tek dosyalı, f
 
 ## Oyna
 
-`index.html` dosyasını tarayıcıda aç veya bir local server ile serve et.
+[https://zaferayan.itch.io/hammer-girl](https://zaferayan.itch.io/hammer-girl)
+
+Veya `index.html` dosyasını tarayıcıda aç.
 
 ## Kontroller
 
